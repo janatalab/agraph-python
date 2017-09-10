@@ -148,12 +148,13 @@ class Client(Catalog):
     def deleteScript(self, module):
         nullRequest(self, "DELETE", "/scripts/" + to_native_string(module))
 
-    def openSession(self, spec, autocommit=False, lifetime=None, loadinitfile=False):
+    def openSession(self, spec, autocommit=False, lifetime=None, loadinitfile=False, maintainClientSessionTimeout=True):
         url = jsonRequest(self, "POST", "/session?" +
                           urlenc(autoCommit=autocommit, lifetime=lifetime,
                                  loadInitFile=loadinitfile, store=spec))
         rep = self._instance_from_url(Repository, url)
-        rep._enableSession(lifetime)
+        if maintainClientSessionTimeout:
+            rep._enableSession(lifetime)
         return rep
 
     def listUsers(self):
@@ -259,6 +260,7 @@ class Client(Catalog):
 
 class Repository(Service):
     sessionAlive = None
+    maintainClientSessionTimeout = True
 
     def getSize(self, context=None):
         """Returns the amount of triples in the repository."""
@@ -659,14 +661,18 @@ class Repository(Service):
     def enableTripleCache(self, size=None):
         nullRequest(self, "PUT", "/tripleCache?" + urlenc(size=size))
 
-    def openSession(self, autocommit=False, lifetime=None, loadinitfile=False):
+    def openSession(self, autocommit=False, lifetime=None, loadinitfile=False, maintainClientSessionTimeout=True):
+        self.maintainClientSessionTimeout = maintainClientSessionTimeout
         if self.sessionAlive:
             # A session is already active.  Do nothing.
             return
         self.oldUrl = self.url
         self.url = jsonRequest(self, "POST", "/session?" + urlenc(autoCommit=autocommit,
             lifetime=lifetime, loadInitFile=loadinitfile))
-        self._enableSession(lifetime)
+        if self.maintainClientSessionTimeout:
+            self._enableSession(lifetime)
+        else:
+            self.sessionAlive = True
 
     def _enableSession(self, lifetime):
         alive = self.sessionAlive = threading.Event()
@@ -697,7 +703,9 @@ class Repository(Service):
     def closeSession(self):
         if not self.sessionAlive: return
         # Notify pingSession() of session close
-        self.sessionAlive.set()
+        if self.maintainClientSessionTimeout:
+            self.sessionAlive.set()
+            
         self.sessionAlive = None
         try: nullRequest(self, "POST", "/session/close")
         except Exception: pass
@@ -715,7 +723,8 @@ class Repository(Service):
         return jsonRequest(self, "GET", "/bulkMode")
 
     def __del__(self):
-        self.closeSession()
+        if self.maintainClientSessionTimeout:
+            self.closeSession()
 
     def registerEncodedIdPrefix(self, prefix, uri_format):
         return nullRequest(self, "POST", "/encodedIds/prefixes?" +

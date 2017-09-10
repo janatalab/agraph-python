@@ -907,7 +907,7 @@ class RepositoryConnection(object):
         miniRep = self._get_mini_repository()
         return miniRep.evalFreeTextSearch(pattern, index, infer, wrap_callback(callback), limit, offset=offset)
 
-    def openSession(self, autocommit=False, lifetime=None, loadinitfile=False):
+    def openSession(self, autocommit=False, lifetime=None, loadinitfile=False, maintainClientSessionTimeout=True):
         """
         Open a session.
 
@@ -934,6 +934,11 @@ class RepositoryConnection(object):
         :param loadinitfile: if ``True`` then the current initfile will be loaded
                              for you when the session starts. The default is ``False``.
         :type loadinitfile: bool
+        :param maintainClientSessionTimeout: if ``True`` (the default) then a pinger thread is maintained on 
+                                            the client to keep it active for the requested lifetime. 
+                                            If ``False``, the session is created on the server for the requested lifetime, 
+                                            but there is no local tracking of the lifetime
+        :type maintainClientSessionTimeout: bool
         """
         if not self.is_session_active:
             miniRep = self._get_mini_repository()
@@ -941,7 +946,7 @@ class RepositoryConnection(object):
                 # Don't use the shared mini_repository for a session
                 miniRep = self.mini_repository = copy.copy(self.repository.mini_repository)
 
-            miniRep.openSession(autocommit, lifetime, loadinitfile)
+            miniRep.openSession(autocommit, lifetime, loadinitfile, maintainClientSessionTimeout)
             self.is_session_active = True
 
     def closeSession(self):
